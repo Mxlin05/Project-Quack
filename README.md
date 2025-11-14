@@ -1,8 +1,5 @@
 To build a model that takes historical price data (OHLCV), technical indicators, and calendar features to predict a future price or trend.
-
-Disclaimer: This is an educational project. The stock market is extremely complex ("non-stationary") and influenced by factors (news, sentiment, high-frequency trading) not in our dataset. A profitable model is the "holy grail," but the primary goal here is to learn data engineering, time-series analysis, and deep learning.
-
-🛠️ Recommended Tools (Libraries & APIs)
+ 
 Data Acquisition: yfinance (an open-source API for Yahoo Finance data).
 
 Data Manipulation: pandas (for organizing data) and numpy (for numerical operations).
@@ -16,7 +13,6 @@ scikit-learn (sklearn): Essential for preprocessing, especially MinMaxScaler for
 TensorFlow with the keras API: The main framework for building and training your neural network.
 
 Phase 1: The Data Pipeline (The Foundation)
-This is the most critical phase. Your model is only as good as your data.
 
 1. Data Acquisition
 First, you must get historical data. Use a library like yfinance to download daily (or hourly) data for a specific stock ticker (e.g., "SPY" or "AAPL"). This will give you the Open, High, Low, Close, Volume (OHLCV) data.
@@ -55,7 +51,7 @@ This is the practical approach using high-level libraries.
 For time-series, a standard "feed-forward" network is not ideal. You should use a Recurrent Neural Network (RNN), specifically an LSTM (Long Short-Term Memory) network. LSTMs have a "memory" and are explicitly designed to find patterns in sequences, like time-series data.
 
 2. The Time-Series Split
-CRITICAL: You cannot shuffle time-series data for a train/test split. This would let the model "see the future." You must split your data chronologically.
+You cannot shuffle time-series data for a train/test split. This would let the model "see the future." You must split your data chronologically.
 
 Example: Train on data from 2010-2022. Test on data from 2023.
 
