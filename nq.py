@@ -3,14 +3,9 @@ import pandas as pd
 import pandas_ta_classic as ta
 import numpy as np
 import vectorbt as vbt
+import zstandard as zstd
 
-#libraries' versions
-print("Pandas TA version: " + ta.version) 
-print("Pandas version: " + pd.__version__)
-print("Yfinance version: " + yf.__version__)
-print("Numpy version: " + np.__version__)
-
-#Import NQ OHLCV data from yfinance
+#Import NQ OHLCV data from yfinance (Will be replaced with attached OHLCV data)
 ticker = yf.Ticker("NQ=F",)
 nq = ticker.history(period="max",interval="1d")
 
@@ -18,23 +13,21 @@ nq = ticker.history(period="max",interval="1d")
 nq['ema_fast'] = nq.ta.ema(length=21)
 nq['ema_slow'] = nq.ta.ema(length=55)
 nq['rsi'] = nq.ta.rsi(length=14)
-
-tp = (nq['High'] + nq['Low'] + nq['Close']) / 3
-vol = nq['Volume']
-nq['session_vwap'] = (
-    (tp * vol).groupby(nq.index.date).cumsum()/vol.groupby(nq.index.date).cumsum()
-)
+nq['vwap'] = nq.ta.vwap(close = nq['Close'], volume = nq['Volume'], anchor = "D")
+bbands = nq.ta.bbands(length=20)
+nq['bb_upper'] = bbands.iloc[:, 2]  
+nq['bb_lower'] = bbands.iloc[:, 0]  
 
 nq.dropna(inplace=True) #Gets rid of NaN values
 
 #Requirements for trade entries
 entries_long = (
-    (nq['ema_fast'] > nq['ema_slow']) & nq['rsi'].vbt.crossed_above(40) & (nq['Close'] > nq['session_vwap'])
+    (nq['ema_fast'] > nq['ema_slow']) & nq['rsi'].vbt.crossed_above(40) & (nq['Close'] > nq['vwap'])
 )
 exits_long = nq['ema_fast'].vbt.crossed_below(nq['ema_slow'])
 
 entries_short = (
-    (nq['ema_fast'] < nq['ema_slow']) & nq['rsi'].vbt.crossed_below(60) & (nq['Close'] < nq['session_vwap'])
+    (nq['ema_fast'] < nq['ema_slow']) & nq['rsi'].vbt.crossed_below(60) & (nq['Close'] < nq['vwap'])
 )
 exits_short = nq['ema_fast'].vbt.crossed_above(nq['ema_slow'])
 
