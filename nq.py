@@ -1,46 +1,58 @@
-import yfinance as yf
 import pandas as pd
 import pandas_ta_classic as ta
-import numpy as np
 import vectorbt as vbt
 import zstandard as zstd
+import matplotlib.pyplot as plt
 
-#Import NQ OHLCV data from yfinance (Will be replaced with attached OHLCV data)
-ticker = yf.Ticker("NQ=F",)
-nq = ticker.history(period="max",interval="1d")
+#Import NQ OHLCV data
+compressed_data =  'c:/Users/bennn/repos/Project-Quack/NQ_OHLCV_1h/glbx-mdp3-20100606-20251231.ohlcv-1h.csv.zst'
+with open(compressed_data, 'rb') as binary:
+    dctx = zstd.ZstdDecompressor()
+    with dctx.stream_reader(binary) as reader:
+        nq = pd.read_csv(reader)
+        nq['datetime'] = pd.to_datetime(nq['ts_event'])
+        nq.set_index('datetime', inplace=True)
 
-#EMA, RSI, and VWARP indicators
+#EMA, RSI, VWAP, BBANDS indicators
 nq['ema_fast'] = nq.ta.ema(length=21)
 nq['ema_slow'] = nq.ta.ema(length=55)
 nq['rsi'] = nq.ta.rsi(length=14)
-nq['vwap'] = nq.ta.vwap(close = nq['Close'], volume = nq['Volume'], anchor = "D")
-bbands = nq.ta.bbands(length=20)
-nq['bb_upper'] = bbands.iloc[:, 2]  
-nq['bb_lower'] = bbands.iloc[:, 0]  
+nq['vwap'] = nq.ta.vwap(close=nq['close'], volume=nq['volume'], anchor="D")
 
-nq.dropna(inplace=True) #Gets rid of NaN values
+bbands = nq.ta.bbands(length=20)
+nq['bb_upper'] = bbands.iloc[:, 2]
+nq['bb_lower'] = bbands.iloc[:, 0]
+
+# Remove all NaN values 
+nq = nq.dropna()
+nq = nq[nq['close'] > 0]
+print(nq.tail())
 
 #Requirements for trade entries
 entries_long = (
-    (nq['ema_fast'] > nq['ema_slow']) & nq['rsi'].vbt.crossed_above(40) & (nq['Close'] > nq['vwap'])
+    (nq['ema_fast'] > nq['ema_slow']) 
+    & (nq['rsi'] < 50)
 )
-exits_long = nq['ema_fast'].vbt.crossed_below(nq['ema_slow'])
+
+exits_long = nq['ema_fast'] < nq['ema_slow']
 
 entries_short = (
-    (nq['ema_fast'] < nq['ema_slow']) & nq['rsi'].vbt.crossed_below(60) & (nq['Close'] < nq['vwap'])
+    (nq['ema_fast'] < nq['ema_slow']) 
+    & (nq['rsi'] > 50)
 )
-exits_short = nq['ema_fast'].vbt.crossed_above(nq['ema_slow'])
 
-#Backtesting; Returns portfolio detailing winrate, best/worst trades, total trades, etc
+exits_short = nq['ema_fast'] > nq['ema_slow']
+
+
+#Backtesting
 portfolio = vbt.Portfolio.from_signals(
-    nq['Close'],
+    nq['close'],
     entries=entries_long,
     exits=exits_long,
     short_entries=entries_short,
     short_exits=exits_short,
-    freq="15min",
+    init_cash= 100,
+    freq="1h",
     fees=0.0005,  
 )
-print(portfolio.stats()) 
-
-
+print(portfolio.stats())
