@@ -29,7 +29,6 @@ minuteOHLCV = pd.concat(dfs, ignore_index=True)
 minuteOHLCV['datetime'] = pd.to_datetime(minuteOHLCV['ts_event'])
 minuteOHLCV.set_index('datetime', inplace=True)
 
-
 #Hourly EMA, RSI, VWAP, BBANDS indicators
 hourlyOHLCV['ema_fast'] = hourlyOHLCV.ta.ema(length=21)
 hourlyOHLCV['ema_slow'] = hourlyOHLCV.ta.ema(length=55)
@@ -52,65 +51,70 @@ minuteOHLCV['bb_lower'] = bbands.iloc[:, 0]
 
 # Remove all NaN values 
 hourlyOHLCV = hourlyOHLCV.dropna()
-hourlyOHLCV = hourlyOHLCV[hourlyOHLCV['close'] > 500] 
 minuteOHLCV = minuteOHLCV.dropna()
-minuteOHLCV = minuteOHLCV[minuteOHLCV['close'] > 500]
-print(hourlyOHLCV.tail())
-print(minuteOHLCV.tail())
 
-#Align 1-minute data to 1-hour timeframe 
-minuteOHLCV_hourly = minuteOHLCV.resample('1h').agg({
-    'open': 'first',
-    'high': 'max',
-    'low': 'min',
-    'close': 'last',
-    'volume': 'sum',
-    'ema_fast': 'last',
-    'ema_slow': 'last',
-    'rsi': 'last',
-    'vwap': 'last',
-    'bb_upper': 'last',
-    'bb_lower': 'last'
-})
+#Filter data spikes to keep price at a standard amount
+standard_hourly = (hourlyOHLCV['close'] > 500) & (hourlyOHLCV['high'] < 30000) & (hourlyOHLCV['low'] > 100)
+hourlyOHLCV = hourlyOHLCV[standard_hourly]
 
-# Align both dataframes to the same datetime
-common_index = hourlyOHLCV.index.intersection(minuteOHLCV_hourly.index)
-hourlyOHLCV = hourlyOHLCV.loc[common_index]
-minuteOHLCV_hourly = minuteOHLCV_hourly.loc[common_index]
+standard_minute = (minuteOHLCV['close'] > 500) & (minuteOHLCV['high'] < 30000) & (minuteOHLCV['low'] > 100)
+minuteOHLCV = minuteOHLCV[standard_minute]
 
-#Requirements for trade entries
-#Timeframes must align
+#Sort data and remove any duplicates
+hourlyOHLCV = hourlyOHLCV.sort_index()
+hourlyOHLCV = hourlyOHLCV[~hourlyOHLCV.index.duplicated(keep='first')]
+minuteOHLCV = minuteOHLCV.sort_index()
+minuteOHLCV = minuteOHLCV[~minuteOHLCV.index.duplicated(keep='first')]
+
+#Make sures that start and end dates match between different timeframes
+start_dt = max(hourlyOHLCV.index[0], minuteOHLCV.index[0])
+end_dt = min(hourlyOHLCV.index[-1], minuteOHLCV.index[-1])
+hourlyOHLCV = hourlyOHLCV.loc[start_dt:end_dt]
+minuteOHLCV = minuteOHLCV.loc[start_dt:end_dt]
+
+print("Hourly OHLCV Data")
+print(hourlyOHLCV)
+print("Minute OHLCV Data")
+print(minuteOHLCV)
+
+#Hourly data determine the trend: Bullish/Bearish
+hourly_trend = (hourlyOHLCV['ema_fast'] > hourlyOHLCV['ema_slow'])
+hourly_trend_minute = hourly_trend.reindex(minuteOHLCV.index, method='ffill')
+
+#Minute data determines if price is oversold/overbought and if it stays that way
+rsi_cross_up = (minuteOHLCV['rsi'] > 30) & (minuteOHLCV['rsi'].shift(1) <= 30)
+rsi_cross_down = (minuteOHLCV['rsi'] < 70) & (minuteOHLCV['rsi'].shift(1) >= 70)
+
+#Long: Hourly Trend: Bullish and RSI is oversold
 entries_long = (
-    (hourlyOHLCV['ema_fast'] > hourlyOHLCV['ema_slow']) 
-    & (minuteOHLCV_hourly['ema_fast'] > minuteOHLCV_hourly['ema_slow'])
-    & (hourlyOHLCV['rsi'] < 50)
-    & (minuteOHLCV_hourly['rsi'] < 50)
+    hourly_trend_minute 
+    & rsi_cross_up
 )
 
+#Short: Hourly Trend: Bearish and RSI is overbought
 entries_short = (
-    (hourlyOHLCV['ema_fast'] < hourlyOHLCV['ema_slow']) 
-    & (minuteOHLCV_hourly['ema_fast'] < minuteOHLCV_hourly['ema_slow'])
-    & (hourlyOHLCV['rsi'] > 50)
-    & (minuteOHLCV_hourly['rsi'] > 50)
+    ~hourly_trend_minute
+    & rsi_cross_down
 )
 
-#Exits when hourly indicates a reversal
-exits_long = hourlyOHLCV['ema_fast'] < hourlyOHLCV['ema_slow']
-exits_short = hourlyOHLCV['ema_fast'] > hourlyOHLCV['ema_slow']
+#Exits when minute indicates a reversal as volatility is ending
+exits_long = (minuteOHLCV['close'] > minuteOHLCV['bb_upper'])
+
+exits_short = (minuteOHLCV['close'] < minuteOHLCV['bb_lower'])
 
 #Backtesting
 portfolio = vbt.Portfolio.from_signals(
-    close=hourlyOHLCV['close'],
-    open=hourlyOHLCV['open'],
-    high=hourlyOHLCV['high'],
-    low=hourlyOHLCV['low'],
+    close=minuteOHLCV['close'],
+    open=minuteOHLCV['open'],
+    high=minuteOHLCV['high'],
+    low=minuteOHLCV['low'],
     entries=entries_long,
     exits=exits_long,
     short_entries=entries_short,
     short_exits=exits_short,
     init_cash= 50000,
-    freq="1h",
+    freq="1min",
     fees=0.00002, 
-    sl_stop=0.02, 
+    sl_trail=0.005, 
 )
 print(portfolio.stats())
