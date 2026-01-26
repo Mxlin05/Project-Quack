@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import pandas_ta_classic as ta
 import vectorbt as vbt
 import zstandard as zstd
@@ -71,19 +72,33 @@ minuteDataFrame = minuteDataFrame[~minuteDataFrame.index.duplicated(keep='first'
 #Align datetime between different timeframes
 start_dt = max(hourlyDataFrame.index[0], minuteDataFrame.index[0])
 end_dt = min(hourlyDataFrame.index[-1], minuteDataFrame.index[-1])
-hourlyOHLCV = hourlyDataFrame.loc[start_dt:end_dt]
-minuteOHLCV = minuteDataFrame.loc[start_dt:end_dt]
+hourlyDataFrame = hourlyDataFrame.loc[start_dt:end_dt]
+minuteDataFrame = minuteDataFrame.loc[start_dt:end_dt]
 
 #Print data
-print("Hourly OHLCV Data")
-print(hourlyOHLCV.tail())
-print("Minute OHLCV Data")
-print(minuteOHLCV.tail())
+print("Hourly Data:")
+print(hourlyDataFrame)
+print("Minute Data:")
+print(minuteDataFrame)
 
 #Transform price and volume to log returns
-#Code not yet implemented
+ohlcv_cols = ['open', 'high', 'low', 'close', 'volume']
+hourlyDataFrame[ohlcv_cols] = np.log(hourlyDataFrame[ohlcv_cols] / hourlyDataFrame[ohlcv_cols].shift(1))
+minuteDataFrame[ohlcv_cols] = np.log(minuteDataFrame[ohlcv_cols] / minuteDataFrame[ohlcv_cols].shift(1))
+hourlyDataFrame.dropna(inplace=True)
+minuteDataFrame.dropna(inplace=True)
 
 #Normalize the data
-#Code not yet implemented
+#Current implementation normalizes all data (About 15 years), but should be split into training and testing
+#Data splits can include 4 years of training and 1 year of testing for a total of 3 iterations
 scaler = MinMaxScaler()
+indicator_cols = ['ema_fast', 'ema_slow', 'rsi', 'vwap', 'bb_upper', 'bb_lower']
 
+minuteDataFrame[ohlcv_cols + indicator_cols] = scaler.fit_transform(minuteDataFrame[ohlcv_cols + indicator_cols]) 
+hourlyDataFrame[ohlcv_cols + indicator_cols] = scaler.fit_transform(hourlyDataFrame[ohlcv_cols + indicator_cols])
+
+#Print normalized data
+print("Normalized Hourly Data:")
+print(hourlyDataFrame)
+print("Normalized Minute Data:")
+print(minuteDataFrame)
