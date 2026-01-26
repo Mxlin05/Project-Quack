@@ -3,20 +3,20 @@ import pandas_ta_classic as ta
 import vectorbt as vbt
 import zstandard as zstd
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
 import glob
 
 #Decompress hourly NQ OHLCV data
-hourly_data =  'c:/Users/bennn/repos/Project-Quack/NQ_OHLCV_1h/glbx-mdp3-20100606-20251231.ohlcv-1h.csv.zst'
+hourly_data =  'NQ_OHLCV_1h/glbx-mdp3-20100606-20251231.ohlcv-1h.csv.zst'
 with open(hourly_data, 'rb') as binary:
     dctx = zstd.ZstdDecompressor()
     with dctx.stream_reader(binary) as decompressed:
-        hourlyOHLCV = pd.read_csv(decompressed)
-        hourlyOHLCV['datetime'] = pd.to_datetime(hourlyOHLCV['ts_event'])
-        hourlyOHLCV.set_index('datetime', inplace=True)
+        hourlyDataFrame = pd.read_csv(decompressed)
+        hourlyDataFrame['datetime'] = pd.to_datetime(hourlyDataFrame['ts_event'])
+        hourlyDataFrame.set_index('datetime', inplace=True)
 
-#Decompress minute NQ OHLCV data
-#Contains multiple .zst files so runtime is slow
-minute_data = sorted(glob.glob('c:/Users/bennn/repos/Project-Quack/NQ_OHLCV_1m/glbx-mdp3-*.ohlcv-1m.csv.zst'))
+#Decompress minute NQ OHLCV data. Contains multiple .zst files so runtime is slow
+minute_data = sorted(glob.glob('NQ_OHLCV_1m/glbx-mdp3-*.ohlcv-1m.csv.zst'))
 dfs= []
 for file in minute_data:
     with open(file, 'rb') as binary:
@@ -25,96 +25,65 @@ for file in minute_data:
             df = pd.read_csv(decompressed)
             dfs.append(df)
 
-minuteOHLCV = pd.concat(dfs, ignore_index=True)
-minuteOHLCV['datetime'] = pd.to_datetime(minuteOHLCV['ts_event'])
-minuteOHLCV.set_index('datetime', inplace=True)
+minuteDataFrame = pd.concat(dfs, ignore_index=True)
+minuteDataFrame['datetime'] = pd.to_datetime(minuteDataFrame['ts_event'])
+minuteDataFrame.set_index('datetime', inplace=True)
 
 #Hourly EMA, RSI, VWAP, BBANDS indicators
-hourlyOHLCV['ema_fast'] = hourlyOHLCV.ta.ema(length=21)
-hourlyOHLCV['ema_slow'] = hourlyOHLCV.ta.ema(length=55)
-hourlyOHLCV['rsi'] = hourlyOHLCV.ta.rsi(length=14)
-hourlyOHLCV['vwap'] = hourlyOHLCV.ta.vwap(close=hourlyOHLCV['close'], volume=hourlyOHLCV['volume'], anchor="D")
+hourlyDataFrame['ema_fast'] = hourlyDataFrame.ta.ema(length=21)
+hourlyDataFrame['ema_slow'] = hourlyDataFrame.ta.ema(length=55)
+hourlyDataFrame['rsi'] = hourlyDataFrame.ta.rsi(length=14)
+hourlyDataFrame['vwap'] = hourlyDataFrame.ta.vwap(close=hourlyDataFrame['close'], volume=hourlyDataFrame['volume'], anchor="D")
 
-bbands = hourlyOHLCV.ta.bbands(length=20)
-hourlyOHLCV['bb_upper'] = bbands.iloc[:, 2]
-hourlyOHLCV['bb_lower'] = bbands.iloc[:, 0]
+bbands = hourlyDataFrame.ta.bbands(length=20)
+hourlyDataFrame['bb_upper'] = bbands.iloc[:, 2]
+hourlyDataFrame['bb_lower'] = bbands.iloc[:, 0]
 
 #Minute EMA, RSI, VWAP, BBANDS indicators
-minuteOHLCV['ema_fast'] = minuteOHLCV.ta.ema(length=21)
-minuteOHLCV['ema_slow'] = minuteOHLCV.ta.ema(length=55)
-minuteOHLCV['rsi'] = minuteOHLCV.ta.rsi(length=14)
-minuteOHLCV['vwap'] = minuteOHLCV.ta.vwap(close=minuteOHLCV['close'], volume=minuteOHLCV['volume'], anchor="D")
+minuteDataFrame['ema_fast'] = minuteDataFrame.ta.ema(length=21)
+minuteDataFrame['ema_slow'] = minuteDataFrame.ta.ema(length=55)
+minuteDataFrame['rsi'] = minuteDataFrame.ta.rsi(length=14)
+minuteDataFrame['vwap'] = minuteDataFrame.ta.vwap(close=minuteDataFrame['close'], volume=minuteDataFrame['volume'], anchor="D")
 
-bbands = minuteOHLCV.ta.bbands(length=20)
-minuteOHLCV['bb_upper'] = bbands.iloc[:, 2]
-minuteOHLCV['bb_lower'] = bbands.iloc[:, 0]
+bbands = minuteDataFrame.ta.bbands(length=20)
+minuteDataFrame['bb_upper'] = bbands.iloc[:, 2]
+minuteDataFrame['bb_lower'] = bbands.iloc[:, 0]
 
-# Remove all NaN values 
-hourlyOHLCV = hourlyOHLCV.dropna()
-minuteOHLCV = minuteOHLCV.dropna()
 
-#Filter data spikes to keep price at a standard amount
-standard_hourly = (hourlyOHLCV['close'] > 500) & (hourlyOHLCV['high'] < 30000) & (hourlyOHLCV['low'] > 100)
-hourlyOHLCV = hourlyOHLCV[standard_hourly]
+#Preprocessing data before normalization
+#Remove all NaN values 
+hourlyDataFrame = hourlyDataFrame.dropna()
+minuteDataFrame = minuteDataFrame.dropna()
 
-standard_minute = (minuteOHLCV['close'] > 500) & (minuteOHLCV['high'] < 30000) & (minuteOHLCV['low'] > 100)
-minuteOHLCV = minuteOHLCV[standard_minute]
+#Filter out data spikes 
+filtered_hourly = (hourlyDataFrame['close'] > 500) & (hourlyDataFrame['high'] < 30000) & (hourlyDataFrame['low'] > 100)
+hourlyDataFrame = hourlyDataFrame[filtered_hourly]
+
+filtered_minute = (minuteDataFrame['close'] > 500) & (minuteDataFrame['high'] < 30000) & (minuteDataFrame['low'] > 100)
+minuteDataFrame = minuteDataFrame[filtered_minute]
 
 #Sort data and remove any duplicates
-hourlyOHLCV = hourlyOHLCV.sort_index()
-hourlyOHLCV = hourlyOHLCV[~hourlyOHLCV.index.duplicated(keep='first')]
-minuteOHLCV = minuteOHLCV.sort_index()
-minuteOHLCV = minuteOHLCV[~minuteOHLCV.index.duplicated(keep='first')]
+hourlyDataFrame = hourlyDataFrame.sort_index()
+hourlyDataFrame = hourlyDataFrame[~hourlyDataFrame.index.duplicated(keep='first')]
+minuteDataFrame = minuteDataFrame.sort_index()
+minuteDataFrame = minuteDataFrame[~minuteDataFrame.index.duplicated(keep='first')]
 
-#Make sures that start and end dates match between different timeframes
-start_dt = max(hourlyOHLCV.index[0], minuteOHLCV.index[0])
-end_dt = min(hourlyOHLCV.index[-1], minuteOHLCV.index[-1])
-hourlyOHLCV = hourlyOHLCV.loc[start_dt:end_dt]
-minuteOHLCV = minuteOHLCV.loc[start_dt:end_dt]
+#Align datetime between different timeframes
+start_dt = max(hourlyDataFrame.index[0], minuteDataFrame.index[0])
+end_dt = min(hourlyDataFrame.index[-1], minuteDataFrame.index[-1])
+hourlyOHLCV = hourlyDataFrame.loc[start_dt:end_dt]
+minuteOHLCV = minuteDataFrame.loc[start_dt:end_dt]
 
+#Print data
 print("Hourly OHLCV Data")
-print(hourlyOHLCV)
+print(hourlyOHLCV.tail())
 print("Minute OHLCV Data")
-print(minuteOHLCV)
+print(minuteOHLCV.tail())
 
-#Hourly data determine the trend: Bullish/Bearish
-hourly_trend = (hourlyOHLCV['ema_fast'] > hourlyOHLCV['ema_slow'])
-hourly_trend_minute = hourly_trend.reindex(minuteOHLCV.index, method='ffill')
+#Transform price and volume to log returns
+#Code not yet implemented
 
-#Minute data determines if price is oversold/overbought and if it stays that way
-rsi_cross_up = (minuteOHLCV['rsi'] > 30) & (minuteOHLCV['rsi'].shift(1) <= 30)
-rsi_cross_down = (minuteOHLCV['rsi'] < 70) & (minuteOHLCV['rsi'].shift(1) >= 70)
+#Normalize the data
+#Code not yet implemented
+scaler = MinMaxScaler()
 
-#Long: Hourly Trend: Bullish and RSI is oversold
-entries_long = (
-    hourly_trend_minute 
-    & rsi_cross_up
-)
-
-#Short: Hourly Trend: Bearish and RSI is overbought
-entries_short = (
-    ~hourly_trend_minute
-    & rsi_cross_down
-)
-
-#Exits when minute indicates a reversal as volatility is ending
-exits_long = (minuteOHLCV['close'] > minuteOHLCV['bb_upper'])
-
-exits_short = (minuteOHLCV['close'] < minuteOHLCV['bb_lower'])
-
-#Backtesting
-portfolio = vbt.Portfolio.from_signals(
-    close=minuteOHLCV['close'],
-    open=minuteOHLCV['open'],
-    high=minuteOHLCV['high'],
-    low=minuteOHLCV['low'],
-    entries=entries_long,
-    exits=exits_long,
-    short_entries=entries_short,
-    short_exits=exits_short,
-    init_cash= 50000,
-    freq="1min",
-    fees=0.00002, 
-    sl_trail=0.005, 
-)
-print(portfolio.stats())

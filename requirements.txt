@@ -1,6 +1,7 @@
-yfinance
 pandas
 pandas-ta-classic
 numpy
 vectorbt
-
+zstandard
+matplotlib.pyplot
+sklearn.preprocessing
