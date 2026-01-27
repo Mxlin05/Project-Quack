@@ -5,6 +5,7 @@ import vectorbt as vbt
 import zstandard as zstd
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import TimeSeriesSplit
 import glob
 
 #Decompress hourly NQ OHLCV data
@@ -88,17 +89,50 @@ minuteDataFrame[ohlcv_cols] = np.log(minuteDataFrame[ohlcv_cols] / minuteDataFra
 hourlyDataFrame.dropna(inplace=True)
 minuteDataFrame.dropna(inplace=True)
 
-#Normalize the data
-#Current implementation normalizes all data (About 15 years), but should be split into training and testing
-#Data splits can include 4 years of training and 1 year of testing for a total of 3 iterations
-scaler = MinMaxScaler()
-indicator_cols = ['ema_fast', 'ema_slow', 'rsi', 'vwap', 'bb_upper', 'bb_lower']
+#Splitting data into 3 iterations of 4 years training and 1 year of testing using TimeSeriesSplit
+total_days = (hourlyDataFrame.index[-1] - hourlyDataFrame.index[0]).days
+samples_per_year = len(hourlyDataFrame) / (total_days / 365.25)
+four_years_samples = int(samples_per_year * 4)
 
-minuteDataFrame[ohlcv_cols + indicator_cols] = scaler.fit_transform(minuteDataFrame[ohlcv_cols + indicator_cols]) 
-hourlyDataFrame[ohlcv_cols + indicator_cols] = scaler.fit_transform(hourlyDataFrame[ohlcv_cols + indicator_cols])
+tscv = TimeSeriesSplit(n_splits=10, test_size=int(samples_per_year), max_train_size=four_years_samples)
 
-#Print normalized data
-print("Normalized Hourly Data:")
-print(hourlyDataFrame)
-print("Normalized Minute Data:")
-print(minuteDataFrame)
+print(f"Total Hourly Samples: {len(hourlyDataFrame)}")
+print(f"Approx. 4-Year Samples: {four_years_samples}")
+
+for i, (train_index, test_index) in enumerate(tscv.split(hourlyDataFrame)):
+    # Get datetime from hourly index to ensure alignment with minute data
+    train_start = hourlyDataFrame.index[train_index[0]]
+    train_end = hourlyDataFrame.index[train_index[-1]]
+    test_start = hourlyDataFrame.index[test_index[0]]
+    test_end = hourlyDataFrame.index[test_index[-1]]
+
+    # Slice DataFrames using datetime 
+    hourly_train = hourlyDataFrame.loc[train_start:train_end].copy()
+    hourly_test = hourlyDataFrame.loc[test_start:test_end].copy()
+    
+    minute_train = minuteDataFrame.loc[train_start:train_end].copy()
+    minute_test = minuteDataFrame.loc[test_start:test_end].copy()
+
+    # Normalize using MinMaxScaler
+    indicator_cols = ['ema_fast', 'ema_slow', 'rsi', 'vwap', 'bb_upper', 'bb_lower']
+    features = ohlcv_cols + indicator_cols
+
+    hourly_scaler = MinMaxScaler()
+    hourly_train[features] = hourly_scaler.fit_transform(hourly_train[features])
+    hourly_test[features] = hourly_scaler.transform(hourly_test[features])
+    
+    minute_scaler = MinMaxScaler()
+    minute_train[features] = minute_scaler.fit_transform(minute_train[features])
+    minute_test[features] = minute_scaler.transform(minute_test[features])
+
+    #Print iterations dates and shapes
+    print("Iteration: ", i + 1,)
+    print(f"Train: {train_start} to {train_end}")
+    print(f"Test:  {test_start} to {test_end}")
+
+    print(f"Hourly Train Shape: {hourly_train.shape}, Test Shape: {hourly_test.shape}")
+    print(f"Minute Train Shape: {minute_train.shape}, Test Shape: {minute_test.shape}")
+    print("Sample Normalized Hourly Train Data:")
+    print(hourly_train.head())
+
+
