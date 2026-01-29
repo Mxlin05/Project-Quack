@@ -12,7 +12,7 @@ Updating sql database
 '''
 
 #Gets login data to access database
-dotenv.load_dotenv("database.env")
+dotenv.load_dotenv("db_cred.env")
 
 test_df = pd.DataFrame({
     "Names": ["Person1", "Person2", "Person3"],
