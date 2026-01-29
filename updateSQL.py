@@ -1,6 +1,6 @@
 print ("Started")
 import pandas as pd
-import urllib
+import urllib.parse
 import sqlalchemy as sqla
 import dotenv
 import os
@@ -12,9 +12,9 @@ Updating sql database
 '''
 
 #Gets login data to access database
-dotenv.load_dotenv("db_cred.env")
+dotenv.load_dotenv("database.env")
 
-test_df = pd.DataFrame({
+test_df = pd.DataFrame({    
     "Names": ["Person1", "Person2", "Person3"],
     "Ages": [15, 23, 67]
 })
@@ -22,10 +22,10 @@ test_df = pd.DataFrame({
 #Connecting to the database
 conn_str = (
     "DRIVER=ODBC Driver 18 for SQL Server;"
-    f"SERVER={os.getenv("Server")};"
+    f"SERVER={os.getenv('Server')};"
     "DATABASE=Project Quack;"
-    f"UID={os.getenv("UserId")};"
-    f"PWD={os.getenv("Password")}"
+    f"UID={os.getenv('UserId')};"
+    f"PWD={os.getenv('Password')}"
 )
 conn_url = f"mssql+pyodbc:///?odbc_connect={urllib.parse.quote_plus(conn_str)}"
 engine = sqla.create_engine(conn_url)

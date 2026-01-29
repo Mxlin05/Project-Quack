@@ -6,6 +6,7 @@ import zstandard as zstd
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import TimeSeriesSplit
+import tensorflow as tf
 import glob
 
 #Decompress hourly NQ OHLCV data

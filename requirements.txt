@@ -3,5 +3,10 @@ pandas-ta-classic
 numpy
 vectorbt
 zstandard
-matplotlib.pyplot
-sklearn.preprocessing
+matplotlib
+scikit-learn
+tensorflow
+keras
+sqlalchemy
+python-dotenv
+pyodbc
