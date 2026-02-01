@@ -2,6 +2,7 @@ from data_process import hourlyDataFrame, minuteDataFrame, ohlcv_cols
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import TimeSeriesSplit
 import pandas as pd
+import joblib
 import urllib.parse
 import sqlalchemy as sqla
 import dotenv
@@ -41,10 +42,28 @@ four_years_samples = int(samples_per_year * 4)
 tscv = TimeSeriesSplit(n_splits=10, test_size=int(samples_per_year), max_train_size=four_years_samples)
 
 print(f"Total Hourly Samples: {len(hourlyDataFrame)}")
-print(f"Approx. 4-Year Samples: {four_years_samples}")
+print(f"Approx 4-Year Samples: {four_years_samples}")
+print(f"Total Minute Samples: {len(minuteDataFrame)}")
+print(f"Approx 4-Year Samples: {four_years_samples * 60}")
 
-training_data = []
-testing_data = []
+print("Uploading raw hourly data to database...")
+hourlyDataFrame.to_sql(
+    "raw_hourly_data",
+    engine,
+    index=True,
+    if_exists="replace",
+    chunksize=5000,
+    dtype={'date_time': sqla.types.DateTime}
+)
+print("Uploading raw minute data to database...")
+minuteDataFrame.to_sql(
+    "raw_minute_data",
+    engine,
+    index=True,
+    if_exists="replace",
+    chunksize=5000,
+    dtype={'date_time': sqla.types.DateTime}
+)
 
 for i, (train_index, test_index) in enumerate(tscv.split(hourlyDataFrame)):
     # Get datetime from hourly index to ensure alignment with minute data
@@ -60,6 +79,12 @@ for i, (train_index, test_index) in enumerate(tscv.split(hourlyDataFrame)):
     minute_train = minuteDataFrame.loc[train_start:train_end].copy()
     minute_test = minuteDataFrame.loc[test_start:test_end].copy()
 
+    #Create target column
+    minute_train['target'] = (minute_train['close'].shift(-1) > 0.0000).astype(int)
+    minute_test['target'] = (minute_test['close'].shift(-1) > 0.0000).astype(int)
+    minute_train.dropna(inplace=True)
+    minute_test.dropna(inplace=True)
+
     # Normalize using MinMaxScaler
     indicator_cols = ['ema_fast', 'ema_slow', 'rsi', 'vwap', 'bb_upper', 'bb_lower']
     features = ohlcv_cols + indicator_cols
@@ -72,6 +97,10 @@ for i, (train_index, test_index) in enumerate(tscv.split(hourlyDataFrame)):
     minute_train[features] = minute_scaler.fit_transform(minute_train[features])
     minute_test[features] = minute_scaler.transform(minute_test[features])
 
+    # Save the scalers for backtesting/live trading
+    joblib.dump(hourly_scaler, f'scalers/hourly_scaler_{i + 1}.pkl')
+    joblib.dump(minute_scaler, f'scalers/minute_scaler_{i + 1}.pkl')
+
     #Print iterations dates and shapes
     print("Iteration: ", i + 1,)
     print(f"Train: {train_start} to {train_end}")
@@ -81,7 +110,10 @@ for i, (train_index, test_index) in enumerate(tscv.split(hourlyDataFrame)):
     print(f"Minute Train Shape: {minute_train.shape}, Test Shape: {minute_test.shape}")
     print("Sample Normalized Hourly Train Data:")
     print(hourly_train.head())
-    
+    print("Sample Normalized Minute Train Data:")
+    print(minute_train.head())
+
+    print("Uploading training & testing data to database...")
     #Uploading Dataframe to database
     hourly_train.to_sql(
         f"hourly_training_data_{i + 1}",
@@ -115,4 +147,3 @@ for i, (train_index, test_index) in enumerate(tscv.split(hourlyDataFrame)):
         chunksize=5000,
         dtype={'date_time': sqla.types.DateTime}
     )
-
