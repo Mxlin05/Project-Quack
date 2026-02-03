@@ -1,12 +1,12 @@
-from data_process import hourlyDataFrame, minuteDataFrame, ohlcv_cols
+from data_process import hourlyDataFrame, minuteDataFrame,raw_minute_dataframe, raw_hour_dataframe
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import TimeSeriesSplit
-import pandas as pd
 import joblib
 import urllib.parse
 import sqlalchemy as sqla
 import dotenv
 import os
+import time
 
 '''
 Updating sql database
@@ -17,22 +17,37 @@ Updating sql database
 #Gets login data to access database
 dotenv.load_dotenv("database.env")
 
-#Connecting to the database
-conn_str = (
-    "DRIVER=ODBC Driver 18 for SQL Server;"
-    f"SERVER={os.getenv('Server')};"
-    "DATABASE=Project Quack;"
-    f"UID={os.getenv('UserId')};"
-    f"PWD={os.getenv('Password')};"
-    "TrustServerCertificate=yes;"
-)
-conn_url = f"mssql+pyodbc:///?odbc_connect={urllib.parse.quote_plus(conn_str)}"
-url_object = urllib.parse.urlparse(conn_url)
-engine = sqla.create_engine(
-    conn_url,
-    fast_executemany=True,  
-    connect_args={'timeout': 30} 
-)
+def connect_to_database():
+    while True:
+        try:
+            print("Attempting to connect to the database")
+            conn_str = (
+            "DRIVER=ODBC Driver 18 for SQL Server;"
+            f"SERVER={os.getenv('Server')};"
+            "DATABASE=Project Quack;"
+            f"UID={os.getenv('UserId')};"
+            f"PWD={os.getenv('Password')};"
+            "TrustServerCertificate=yes;"
+            )
+            conn_url = f"mssql+pyodbc:///?odbc_connect={urllib.parse.quote_plus(conn_str)}"
+            url_object = urllib.parse.urlparse(conn_url)
+            engine = sqla.create_engine(
+                conn_url,
+                fast_executemany=True,  
+                connect_args={'timeout': 30},
+                pool_pre_ping=True
+            )
+
+            with engine.connect():
+                pass
+
+            print("Database connection successful")
+            return engine
+        except Exception as e:
+            print(f"Connection failed, retrying...")
+            time.sleep(30)
+
+engine = connect_to_database()
 
 #Splitting data into 3 iterations of 4 years training and 1 year of testing using TimeSeriesSplit
 total_days = (hourlyDataFrame.index[-1] - hourlyDataFrame.index[0]).days
@@ -47,7 +62,7 @@ print(f"Total Minute Samples: {len(minuteDataFrame)}")
 print(f"Approx 4-Year Samples: {four_years_samples * 60}")
 
 print("Uploading raw hourly data to database...")
-hourlyDataFrame.to_sql(
+raw_hour_dataframe.to_sql(
     "raw_hourly_data",
     engine,
     index=True,
@@ -56,14 +71,16 @@ hourlyDataFrame.to_sql(
     dtype={'date_time': sqla.types.DateTime}
 )
 print("Uploading raw minute data to database...")
-minuteDataFrame.to_sql(
+raw_minute_dataframe.to_sql(
     "raw_minute_data",
     engine,
     index=True,
     if_exists="replace",
-    chunksize=5000,
+    chunksize=20000,
     dtype={'date_time': sqla.types.DateTime}
 )
+
+features = ['open', 'high', 'low', 'close','volume', 'ema_fast', 'ema_slow','rsi', 'vwap', 'bbands']
 
 for i, (train_index, test_index) in enumerate(tscv.split(hourlyDataFrame)):
     # Get datetime from hourly index to ensure alignment with minute data
@@ -79,21 +96,12 @@ for i, (train_index, test_index) in enumerate(tscv.split(hourlyDataFrame)):
     minute_train = minuteDataFrame.loc[train_start:train_end].copy()
     minute_test = minuteDataFrame.loc[test_start:test_end].copy()
 
-    #Create target column
-    minute_train['target'] = (minute_train['close'].shift(-1) > 0.0000).astype(int)
-    minute_test['target'] = (minute_test['close'].shift(-1) > 0.0000).astype(int)
-    minute_train.dropna(inplace=True)
-    minute_test.dropna(inplace=True)
-
     # Normalize using MinMaxScaler
-    indicator_cols = ['ema_fast', 'ema_slow', 'rsi', 'vwap', 'bb_upper', 'bb_lower']
-    features = ohlcv_cols + indicator_cols
-
-    hourly_scaler = MinMaxScaler()
+    hourly_scaler = MinMaxScaler(feature_range=(-1, 1))
     hourly_train[features] = hourly_scaler.fit_transform(hourly_train[features])
     hourly_test[features] = hourly_scaler.transform(hourly_test[features])
     
-    minute_scaler = MinMaxScaler()
+    minute_scaler = MinMaxScaler(feature_range=(-1, 1))
     minute_train[features] = minute_scaler.fit_transform(minute_train[features])
     minute_test[features] = minute_scaler.transform(minute_test[features])
 

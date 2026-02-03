@@ -5,7 +5,7 @@ import zstandard as zstd
 import glob
 
 #Decompress hourly NQ OHLCV data
-hourly_data =  'NQ_OHLCV_1h/glbx-mdp3-20100606-20251231.ohlcv-1h.csv.zst'
+hourly_data = 'NQ_OHLCV_1h/glbx-mdp3-20100606-20251231.ohlcv-1h.csv.zst'
 with open(hourly_data, 'rb') as binary:
     dctx = zstd.ZstdDecompressor()
     with dctx.stream_reader(binary) as decompressed:
@@ -74,14 +74,53 @@ end_dt = min(hourlyDataFrame.index[-1], minuteDataFrame.index[-1])
 hourlyDataFrame = hourlyDataFrame.loc[start_dt:end_dt]
 minuteDataFrame = minuteDataFrame.loc[start_dt:end_dt]
 
-#Transform price and volume to log returns
-ohlcv_cols = ['open', 'high', 'low', 'close', 'volume']
-hourlyDataFrame[ohlcv_cols] = np.log(hourlyDataFrame[ohlcv_cols] / hourlyDataFrame[ohlcv_cols].shift(1))
-minuteDataFrame[ohlcv_cols] = np.log(minuteDataFrame[ohlcv_cols] / minuteDataFrame[ohlcv_cols].shift(1))
-hourlyDataFrame.replace([np.inf, -np.inf], np.nan, inplace=True)
-minuteDataFrame.replace([np.inf, -np.inf], np.nan, inplace=True)
-hourlyDataFrame.dropna(inplace=True)
-minuteDataFrame.dropna(inplace=True)
+#Create a copy of the raw data before transformation
+raw_hour_dataframe = hourlyDataFrame.copy()
+raw_minute_dataframe = minuteDataFrame.copy()
+
+#Transform features to log returns, relative closes, moving averages, etc
+def transform(df):
+    #Log returns of closing
+    close = np.log(df['close'] / df['close'].shift(1))
+    
+    #Relative to closing price
+    high = (df['high'] - df['close']) / df['close']
+    low  = (df['low'] - df['close']) / df['close']
+    open = (df['open'] - df['close']) / df['close']
+    
+    # Log change of volume
+    new_volume = np.log(df['volume'] + 1).pct_change()
+    
+    # Distance to price
+    ema_fast = (df['close'] - df['ema_fast']) / df['ema_fast']
+    ema_slow = (df['close'] - df['ema_slow']) / df['ema_slow']
+    vwap     = (df['close'] - df['vwap']) / df['vwap']
+    
+    #Compress both upper and lower bands and then converted to a percent change
+    bbands = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+    
+    # RSI scaled
+    rsi = df['rsi'] / 100.0
+
+    df['close']    = close
+    df['high']     = high
+    df['low']      = low
+    df['open']     = open
+    df['volume']   = new_volume
+    df['ema_fast'] = ema_fast
+    df['ema_slow'] = ema_slow
+    df['vwap']     = vwap
+    df['rsi']      = rsi
+    df['bbands'] = bbands
+    
+    df.drop(columns=['bb_lower','bb_upper'], inplace=True, errors='ignore')
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df.dropna(inplace=True)
+
+    return df
+
+minuteDataFrame = transform(minuteDataFrame)
+hourlyDataFrame = transform(hourlyDataFrame)
 
 print("Hourly Columns:", hourlyDataFrame.columns.tolist())
 print("Minute Columns:", minuteDataFrame.columns.tolist())
