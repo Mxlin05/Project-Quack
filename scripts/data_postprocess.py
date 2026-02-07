@@ -1,8 +1,9 @@
 import os
 import tensorflow as tf
 from keras.models import Model
-from keras.layers import Input, LSTM, Dense, Dropout, Concatenate
-from keras.callbacks import EarlyStopping
+from keras.layers import Input, LSTM, Dense, Dropout, Concatenate, GaussianNoise
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from keras.optimizers import Adam
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 import pandas as pd
@@ -11,7 +12,12 @@ import sqlalchemy as sqla
 import dotenv
 import time
 from tqdm.keras import TqdmCallback
-
+from sklearn.utils import class_weight
+from keras.regularizers import l2
+import matplotlib.pyplot as plt
+import numpy as np
+from pickle import dump, load
+ 
 #Gets login data to access database
 dotenv.load_dotenv("database.env")
 
@@ -113,6 +119,16 @@ def create_horizon_column(minute_train, minute_test, HORIZON, engine, PERCENT_CH
 
     return minute_train, minute_test
 
+def compute_class_weights(dataframe):
+    weights_values = class_weight.compute_class_weight(
+        class_weight='balanced',
+        classes = np.unique(dataframe['target']),
+        y = dataframe['target']
+    )
+    weights_dict= dict(enumerate(weights_values))
+    print(f"Mapped Weights: {weights_dict}")
+    return weights_dict
+
 def create_aligned_sequences(min_dataframe,hourly_dataframe, min_window, hour_window, features, target):
     print("Aligning and windowing data...")
     min_dataframe = min_dataframe.sort_index()
@@ -153,71 +169,48 @@ def create_tf_dataset(x_min, x_hour, y):
     ))
     return data_set
 
-def create_model(i,MIN_LOOKBACK,HOUR_LOOKBACK,FEATURES, train_dataset, test_dataset, EPOCHS):
+def create_model(i,MIN_LOOKBACK,HOUR_LOOKBACK,FEATURES, train_dataset, test_dataset, EPOCHS, class_weights):
     print("Creating LSTM Model...")
     
     #Stops training if no improvement in validation loss after 3 epochs
-    early_stop_monitor = EarlyStopping(patience=3, verbose=1, restore_best_weights=True )
+    early_stop_monitor = EarlyStopping(patience=5, verbose=1, restore_best_weights=True )
+
+    #Monitors learning rate if validation loss does not improve for 2 epochs
+    lr_monitor = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, min_lr=0.00001, verbose=1)
 
     #Creating both minute and hourly LSTM inputs
     minute_input = Input(shape=(MIN_LOOKBACK,len(FEATURES)), name ="minute")
-    x_min = LSTM(64,return_sequences=True)(minute_input)
-    x_min = LSTM(64,return_sequences=False)(x_min)
+    x_min = GaussianNoise(0.05)(minute_input) 
+    x_min = LSTM(32,return_sequences=False, kernel_regularizer=l2(0.0001))(x_min) 
+    x_min = Dropout(0.2)(x_min)
 
     hour_input = Input(shape=(HOUR_LOOKBACK,len(FEATURES)), name ="hour")
-    x_hour = LSTM(32,return_sequences=True)(hour_input)
-    x_hour = LSTM(32,return_sequences=False)(x_hour)
+    x_hour = GaussianNoise(0.05)(hour_input)
+    x_hour = LSTM(32,return_sequences=False, kernel_regularizer=l2(0.0001))(x_hour)
+    x_hour= Dropout(0.2)(x_hour)
 
     #Combine both LSTM outputs. Uses leaky relu activation and dropout for regularization
     x = Concatenate()([x_min,x_hour])
-    x = Dense(128, activation="leaky_relu")(x)
-    x = Dropout(0.33)(x)
+    x = Dense(64, activation="leaky_relu", kernel_regularizer=l2(0.0001))(x)
+    x = Dropout(0.3)(x)
 
     #Final output: 3 classes (long, short, no trade) with softmax activation
     output = Dense(3,activation="softmax")(x)
 
     #Create and compile model
     model = Model(inputs=[minute_input, hour_input], outputs=output)
-    model.compile(optimizer="adam",loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+    model.compile(optimizer=Adam(learning_rate=0.0005),loss="sparse_categorical_crossentropy", metrics=["accuracy"])
     history = model.fit(
         train_dataset,
         validation_data=test_dataset,
         verbose="0",
         epochs=EPOCHS, 
-        callbacks=[early_stop_monitor, TqdmCallback(verbose=1)])
+        class_weight= class_weights,
+        callbacks=[early_stop_monitor, lr_monitor, TqdmCallback(verbose=1)])
     
-    model.save(f"lstm_models/lstm_model_{i}.keras") #Saves model after training
+    #Saves model weights and history after training
+    model.save(f"./lstm_models/weights/weights_{i}.keras") 
+    with open(f"./lstm_models/history/history_{i}.pkl", 'wb') as file:
+        dump(history.history, file)
 
-    return history
-
-if __name__ == "__main__":
-    ITERATIONS = 10 #10 Walk-Forward Iterations
-    TARGET = "target" #Target column name
-    MIN_LOOKBACK = 60 #60 minutes
-    HOUR_LOOKBACK = 24 #24 hours
-    BATCH_SIZE = 512 #Batch size for training
-    FEATURES = ['open', 'high', 'low', 'close', 'volume','ema_fast', 'ema_slow', 'rsi', 'vwap', 'bbands']
-    HORIZON = 15 #15 minutes look ahead
-    EPOCHS = 10 #Maximum epochs for training
-    PERCENT_CHANGE = 0.0005 #0.05 percent move
-
-    for i in range(1,ITERATIONS+1):
-        #Connect to the database
-        engine = connect_to_database()
-
-        #Get sql data from database
-        minute_train, minute_test, hourly_train, hourly_test = get_data(i,engine)
-
-        #Create target column using a horizon (15 minutes horizon, 2 = long, 0 = short, 1 = no trade)
-        minute_train, minute_test = create_horizon_column(minute_train, minute_test, HORIZON, engine, PERCENT_CHANGE)
-
-        # Align and window data
-        x_min_train, x_hr_train, y_min_train = create_aligned_sequences(minute_train, hourly_train, MIN_LOOKBACK, HOUR_LOOKBACK, FEATURES, TARGET)
-        x_min_test, x_hr_test, y_min_test = create_aligned_sequences(minute_test, hourly_test, MIN_LOOKBACK, HOUR_LOOKBACK, FEATURES, TARGET)
-
-        #Create Tensorflow Dataset
-        train_dataset = create_tf_dataset(x_min_train,x_hr_train,y_min_train).shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
-        test_dataset = create_tf_dataset(x_min_test,x_hr_test,y_min_test).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
-
-        #Create Model
-        history = create_model(i,MIN_LOOKBACK,HOUR_LOOKBACK,FEATURES,train_dataset,test_dataset, EPOCHS)
+    return model

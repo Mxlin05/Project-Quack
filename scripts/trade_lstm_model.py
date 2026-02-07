@@ -1,0 +1,1 @@
+#Will implement an API connection to allow the LSTM model to make foward-testing predictions using live data

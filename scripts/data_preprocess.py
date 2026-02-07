@@ -5,7 +5,7 @@ import zstandard as zstd
 import glob
 
 #Decompress hourly NQ OHLCV data
-hourly_data = 'NQ_OHLCV_1h/glbx-mdp3-20100606-20251231.ohlcv-1h.csv.zst'
+hourly_data = './raw_OHLCV_data/NQ_OHLCV_1h/glbx-mdp3-20100606-20251231.ohlcv-1h.csv.zst'
 with open(hourly_data, 'rb') as binary:
     dctx = zstd.ZstdDecompressor()
     with dctx.stream_reader(binary) as decompressed:
@@ -15,7 +15,7 @@ with open(hourly_data, 'rb') as binary:
         hourlyDataFrame.set_index('date_time', inplace=True)
 
 #Decompress minute NQ OHLCV data. Contains multiple .zst files so runtime is slow
-minute_data = sorted(glob.glob('NQ_OHLCV_1m/glbx-mdp3-*.ohlcv-1m.csv.zst'))
+minute_data = sorted(glob.glob('./raw_OHLCV_data/NQ_OHLCV_1m/glbx-mdp3-*.ohlcv-1m.csv.zst'))
 dfs= []
 for file in minute_data:
     with open(file, 'rb') as binary:
