@@ -13,7 +13,6 @@ if __name__ == "__main__":
     HORIZON = 15 #Minutes look ahead
     EPOCHS = 50 #Maximum epochs for training
     PERCENT_CHANGE = 0.0005 #Percent move needed for a trade to be considered
-    CONFIDENCE_THRESHOLD = 0.65 #Confidence needed for a trade to be considered 
 
 
     for i in range(1,ITERATIONS+1):

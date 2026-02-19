@@ -14,9 +14,8 @@ import time
 from tqdm.keras import TqdmCallback
 from sklearn.utils import class_weight
 from keras.regularizers import l2
-import matplotlib.pyplot as plt
 import numpy as np
-from pickle import dump, load
+from pickle import dump
  
 #Gets login data to access database
 dotenv.load_dotenv("database.env")
@@ -165,6 +164,7 @@ def create_aligned_sequences(min_dataframe,hourly_dataframe, min_window, hour_wi
 def create_tf_dataset(x_min, x_hour, y):
     print("Creating the tensorflow dataset...")
     data_set = tf.data.Dataset.from_tensor_slices((
+        # type: ignore
         {"minute": x_min, "hour": x_hour}, y
     ))
     return data_set

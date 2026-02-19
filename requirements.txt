@@ -11,3 +11,5 @@ sqlalchemy
 python-dotenv
 pyodbc
 joblib
+yfinance
+seaborn
