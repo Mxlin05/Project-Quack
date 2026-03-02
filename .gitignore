@@ -20,5 +20,4 @@ dist/
 .Python
 .vscode/
 .idea/
-data/raw/*.zip
 data/processed/
