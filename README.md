@@ -1,12 +1,13 @@
 # Project-Quack: Intraday Trading Neural Network
 
-[cite_start]This repository contains the codebase for a highly specialized Hybrid LSTM-Transformer neural network designed for intraday trading of the E-mini Nasdaq-100 (NQ) futures, utilizing the E-mini S&P 500 (ES) as a macroeconomic leading indicator[cite: 62]. [cite_start]The pipeline features rigorous data engineering including Fractional Differentiation, Triple Barrier Method labeling, and Combinatorial Purged Cross-Validation[cite: 63, 126, 136, 269].
+This repository contains the codebase for a highly specialized Hybrid LSTM-Transformer neural network designed for intraday trading of the E-mini Nasdaq-100 (NQ) futures, utilizing the E-mini S&P 500 (ES) as a macroeconomic leading indicator. 
 
 ## Prerequisites
 
 Before downloading the repository, ensure you have the following system dependencies installed:
 
 1. **Python 3.10+**: This project requires a modern Python version (development was done on Python 3.12). You can download it from [python.org](https://www.python.org/downloads/).
+
 2. **Git Large File Storage (Git LFS)**: **Crucial Step.** This repository contains large raw `.zip` datasets that exceed standard Git limits. You *must* install Git LFS before cloning to ensure the data downloads correctly.
    * **Windows**: Download and install from [git-lfs.github.com](https://git-lfs.github.com/)
    * **Linux (Ubuntu/Debian)**: 
@@ -31,7 +32,7 @@ Follow these instructions from the top down to get the trading model environment
 Because Git LFS is tracking the heavy `data/raw/*.zip` files, standard cloning will automatically pull the data if LFS is installed.
 
 ```bash
-git clone [https://github.com/Mxlin05/Project-Quack.git](https://github.com/Mxlin05/Project-Quack.git)
+git clone https://github.com/Mxlin05/Project-Quack.git 
 cd Project-Quack
 ```
 
@@ -54,7 +55,7 @@ Once your virtual environment is activated (you should see `(.venv)` in your ter
 
 ```bash
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/rocm7.1 && pip install mlfinpy --no-deps
 ```
 
 ---

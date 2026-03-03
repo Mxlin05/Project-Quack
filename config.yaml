@@ -1,0 +1,44 @@
+data:
+  es_path: "data/raw/NQ_OHLCV.zip"
+  nq_path: "data/raw/ES_OHLCV.zip"
+  columns: ["open","high","low","close","volume"]
+
+
+indicators:
+  adx_length: 14
+  rsi_length: 9
+
+  macd_fast: 5
+  macd_slow: 35
+  macd_signal: 5
+  
+  vwap_anchor: "D"
+  bbands_length: 20
+  bbands_std: 2.5
+  atr_length: 14
+
+  fvg_timeframe: "15min"
+
+  
+fractional_differentiation:
+  d: 0.40
+  threshold: 0.0001
+
+
+testing:
+  max_trade_time: 45
+  sequence_length: 60
+  
+  validation:
+    splits: 6
+    test_splits: 2
+
+    
+  labeling:
+    pt_sl: [0.2, 0.2]
+
+
+
+
+
+  

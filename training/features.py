@@ -1,16 +1,47 @@
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
-import mlfinpy as fin
+from mlfinpy.util.frac_diff import frac_diff_ffd
 import databento as db
 import zipfile
 import tempfile
 from glob import glob
 import os
+from training.utils import filter_dataframe, process_column
+import joblib
 
+def create_dataframe(file, columns):
+    print("Unzipping Files...")
+    dir = unzip_file(file)
+    print("Converting to Dataframes...")
+    df = to_dataframe(dir,columns)
 
+    return df
+
+def calculate_features(df, columns,config):
+    print("Calculating Indicators...") 
+    df = calculate_indicators(df,config) 
+    print("Applying Fractional Differentiation...")
+    df = apply_fractional_differentiation(df,config,columns)
+    
+    return df
+
+def calculate_spreads(nq : pd.DataFrame, es : pd.DataFrame, config):
+
+    #Calculate the lead lag spread using log returns
+    nq_log_returns = np.log(nq['close'] / nq['close'].shift(1))
+    es_log_returns = np.log(es['close'] / es['close'].shift(1))
+
+    lead_lag_spread = nq_log_returns - es_log_returns
+    lead_lag_spread = pd.Series(lead_lag_spread).fillna(0)
+
+    #Calcuate the RSI spread
+    rsi_spread = nq[f'RSI_{config['rsi_length']}'] - es[f'RSI_{config['rsi_length']}']
+
+    return lead_lag_spread, rsi_spread
 
 def unzip_file(path):
+    #Create a temporary directory to store unzipped files 
     temp_dir = tempfile.mkdtemp()
 
     with zipfile.ZipFile(path,'r') as zf:
@@ -18,22 +49,77 @@ def unzip_file(path):
 
     return temp_dir
 
-def to_dataframe(dir):
+def to_dataframe(dir,columns):
     try:
+        #Look for .dbn.zst files
         files = glob(os.path.join(dir,"*.dbn.zst"))
         df = []
+
+        #For every file decompress and add to a dataframe
         for file in files:
-            df = db.DBNStore.from_file(file).to_df()
+            dbn = db.DBNStore.from_file(file)
+            df.append(dbn.to_df())
 
+        df = pd.concat(df)
+        df = df.sort_index()
+        df = df[~df.index.duplicated(keep='last')]
+        df = filter_dataframe(df,columns)
         return df
-    except:
-        raise ValueError("Dataframe conversion failed")
-        
+    except Exception as e:
+        print(e)
 
-raw_zip = 'data/raw/NQ_OHLCV.zip'
-extracted_path = unzip_file(raw_zip)
-print(f"Extracted to: {extracted_path}")
+def calculate_indicators(df, config):
+    #Uses a yaml to dynamically add varying values to the indicator parameters
+    parameters = config['indicators']
 
-df = to_dataframe(extracted_path)
-print(df.head())
+    #Add indicator values
+    df.ta.adx(length=parameters['adx_length'], append=True)
+    df.ta.macd(fast=parameters['macd_fast'], slow=parameters['macd_slow'], signal=parameters['macd_signal'], append=True)
+    df.ta.rsi(length=parameters['rsi_length'], append=True)
+    df.ta.vwap(anchor=parameters['vwap_anchor'], append=True)
+    df.ta.bbands(length=parameters['bbands_length'], std=parameters['bbands_std'], append=True)
+    df.ta.atr(length=parameters['atr_length'], append=True)
+    df['fvg'] = calculate_fvg(df,parameters['fvg_timeframe']) 
+    return df
+
+def apply_fractional_differentiation(df, config, columns):
+    # Load yaml values
+    fd = config['fractional_differentiation']
+    d = fd['d']
+    thresh = fd['threshold']
+
+    new_df = df.copy()
+
+    #Run processes in parallel
+    results = joblib.Parallel(n_jobs=-1)(
+        joblib.delayed(process_column)(frac_diff_ffd, new_df, col, d, thresh) for col in columns
+    )
+    for col, frac_series in results: #type: ignore
+        new_df[f'{col}_frac'] = frac_series
+
+    new_df = new_df.dropna(axis=0)
+    
+    return new_df
+
+def calculate_fvg(df : pd.DataFrame, timeframe):
+    #Create highs and lows for the first and third candle on the 15 minute interval
+    temp_df = df.resample(timeframe).agg({'high': 'max', 'low': 'min'})
+
+    c1_high = temp_df['high'].shift(2)
+    c1_low = temp_df['low'].shift(2)
+    c3_high = temp_df['high']
+    c3_low = temp_df['low']
+
+    #Returns the gap size. Positive for bullish and negative for bearish
+    bullish_fvg = np.where(c3_low > c1_high, c3_low - c1_high, 0)
+    bearish_fvg = np.where(c3_high < c1_low, c3_high - c1_low, 0)
+    temp_df['fvg'] = bullish_fvg + bearish_fvg
+
+    return temp_df['fvg'].reindex(df.index, method='ffill')
+
+
+    
+
+
+
 
