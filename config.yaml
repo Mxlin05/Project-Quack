@@ -1,8 +1,7 @@
 data:
-  es_path: "data/raw/NQ_OHLCV.zip"
-  nq_path: "data/raw/ES_OHLCV.zip"
+  es_path: "data/raw/ES_OHLCV.zip"
+  nq_path: "data/raw/NQ_OHLCV.zip"
   columns: ["open","high","low","close","volume"]
-
 
 indicators:
   adx_length: 14
@@ -19,11 +18,9 @@ indicators:
 
   fvg_timeframe: "15min"
 
-  
 fractional_differentiation:
   d: 0.40
-  threshold: 0.0001
-
+  threshold: 0.01
 
 testing:
   max_trade_time: 45

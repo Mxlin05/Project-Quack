@@ -2,11 +2,12 @@ from sklearn.preprocessing import MinMaxScaler
 from architecture import TimeSeriesDataset
 import pandas as pd
 import joblib
+from training.utils import create_cv
 
-def calculate_folds(config, features_col, merged, cv):
-    #Separate features and target from the merged dataframe
-    x = merged[features_col]
-    y = merged['bin']
+def calculate_folds(config, df, labels):
+    x = df
+    y = labels
+    cv = create_cv(x, config)
 
     folds = []
 

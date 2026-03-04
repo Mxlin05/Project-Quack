@@ -1,7 +1,8 @@
 import yaml
 from training.features import create_dataframe, calculate_features, calculate_spreads
 from training.labeling import calculate_labels
-from training.utils import merge_features_and_labels, align_dataframes
+from training.utils import align_dataframes
+import pandas as pd
 import glob
 
 def preprocessing(config):
@@ -13,32 +14,36 @@ def preprocessing(config):
     nq_df = create_dataframe(nq_path, columns)
     es_df = create_dataframe(es_path, columns)
 
-    nq_df, es_df = align_dataframes(nq_df, es_df)
+    print(nq_df.shape)  #type: ignore
+    print(es_df.shape)  #type: ignore
 
     #Add features as the datasets'x
     nq_df = calculate_features(nq_df,columns,config)   
     es_df = calculate_features(es_df,columns,config)
 
+    nq_df, es_df = align_dataframes(nq_df, es_df) #type: ignore
+
+    print(nq_df.shape)  #type: ignore
+    print(es_df.shape)  #type: ignore
+
     #Calculates the divergence between the two correlated assets
     print("Calculating Spreads...")
-    lead_lag_spread, rsi_spread = calculate_spreads(es_df, nq_df, config)
-    nq_df['lead_lag_spread'] = lead_lag_spread
-    nq_df['rsi_spread'] = rsi_spread
-
+    nq_df['lead_lag_spread'], nq_df['rsi_spread'] = calculate_spreads(nq_df, es_df, config)
+    
     #Add labels as the dataset's y
     print("Calculating Labels...")
-    nq_labels = calculate_labels(nq_df,config) 
+    labels = calculate_labels(nq_df,config) 
+    print(labels.shape)
 
-    #Self explanatory
-    print("Merging Features and Labels...")
-    nq_merged = merge_features_and_labels(nq_df,nq_labels)
+    nq_df, _ = align_dataframes(nq_df, labels)
+    es_df, _ = align_dataframes(es_df, labels)
 
-    nq_merged, es_df = align_dataframes(nq_merged, es_df)
-    
     #Save as a parquet file for ease of storage and fast lookup
     print("Saving as a .parquet File ...")
-    nq_merged.to_parquet('data/processed/nq_dataframe.parquet',engine='pyarrow')
+    labels.to_parquet('data/processed/labels.parquet',engine='pyarrow')
+    nq_df.to_parquet('data/processed/nq_dataframe.parquet',engine='pyarrow')
     es_df.to_parquet('data/processed/es_dataframe.parquet',engine='pyarrow')
+
 
 def main():
     #Access and assign the config
@@ -48,6 +53,8 @@ def main():
     #Check if parquet files exist, if not then create them
     if not glob.glob("data/processed/*.parquet"):
         preprocessing(config)
+
+    
 
 if __name__ == "__main__":
     main()
