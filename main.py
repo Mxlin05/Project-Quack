@@ -53,7 +53,6 @@ def main():
     #Check if parquet files exist, if not then create them
     if not glob.glob("data/processed/*.parquet"):
         preprocessing(config)
-
     
 
 if __name__ == "__main__":

@@ -72,16 +72,16 @@ Project-Quack/
 │
 ├── data/                    # Core data pipeline 
 │   ├── processed/           # Stationary features 
-│   ├── raw/                 # Raw 1m OHLCV data 
-│   │   ├── ES_OHLCV.zip     
-│   │   └── NQ_OHLCV.zip     
-│   └── scalers/             # Saved Min-Max scaler objects for inference 
+│   └── raw/                 # Raw 1m OHLCV data 
+│       ├── ES_OHLCV.zip     
+│       └── NQ_OHLCV.zip     
 │
 ├── model/                   # Checkpoints and training artifacts 
 │   ├── logs/                # TensorBoard logs and metric histories 
-│   └── weights/             
-│       ├── primary/         # Saved weights for the directional bias model 
-│       └── secondary/       # Saved weights for the meta-labeling filter 
+│   │── weights/             
+│   │    ├── primary/        # Saved weights for the directional bias model 
+│   │    └── secondary/      # Saved weights for the meta-labeling filter 
+│   └── scalers/             # Saved Min-Max scaler objects for inference 
 │
 ├── training/                # Core Python source code 
 │   ├── architecture.py      # PyTorch classes 
