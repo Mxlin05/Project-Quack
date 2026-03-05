@@ -165,9 +165,13 @@ def calculate_active_fvg(df : pd.DataFrame, timeframe):
     temp_df['active_fvg'] = result
     return temp_df['active_fvg'].reindex(df.index, method='ffill')
 
+def calculate_positional_encoding(df):
+    ts_event = df.index
 
-    
+    print(ts_event.hour)
+    df['minutes'] = (ts_event.hour * 60) + ts_event.minute
+    print(df['minutes'])
+    df['day'] = ts_event.dayofweek #type: ignore
 
 
-
-
+    return df

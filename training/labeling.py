@@ -13,7 +13,7 @@ def calculate_labels(df, config):
     def calculate_events(df = df, config = config):
         labeling = config['testing']['labeling']
 
-        threshold = target.median() * 10
+        threshold = target
         t1 = calculate_vertical_barrier(df, config)
         cumsum_events = cusum_filter(close, threshold=threshold)
 

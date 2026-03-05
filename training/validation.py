@@ -22,7 +22,7 @@ def calculate_folds(config, df, labels):
         #Scale every value to fit between 0 and 1
         scaler = MinMaxScaler() 
         scaler.fit(x_train)
-        joblib.dump(scaler, f"./data/scalers/scaler_{fold+1}.pkl")
+        joblib.dump(scaler, f"./model/scalers/scaler_{fold+1}.pkl")
 
         x_trained_scaled = pd.DataFrame(scaler.transform(x_train), index =x_train.index, columns=x_train.columns)
         x_val_scaled = pd.DataFrame(scaler.transform(x_val), index =x_val.index, columns=x_val.columns)
